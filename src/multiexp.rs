@@ -282,6 +282,7 @@ where
         })
 }
 
+// Added by jackoelv for C2 20210330
 // density map filter for exponents
 pub fn density_filter<Q, D, G, S>(
     bases: S,
@@ -333,11 +334,13 @@ where
                     n += 1;
                 }
             }
+
             let (bss, skip) = bases.clone().get();
+            // Modified by jackoelv for C2 20210330
+            // k.multiexp(pool, bss, Arc::new(exps.clone()), skip, n)
             k.multiexp(pool, bss, Arc::new(exps), skip, n)
         }) {
-            let result = Waiter::done(Ok(p));
-            return result
+            return Waiter::done(Ok(p));
         }
     }
 
@@ -354,19 +357,19 @@ where
     }
 
     let result = pool.compute(move || multiexp_inner(bases, density_map, exponents, c));
-
     #[cfg(feature = "gpu")]
     {
         // Do not give the control back to the caller till the
         // multiexp is done. We may want to reacquire the GPU again
         // between the multiexps.
-        Waiter::done(result.wait())
+        let result = result.wait();
+        Waiter::done(result)
     }
     #[cfg(not(feature = "gpu"))]
     result
 }
 
-
+// Added by jackoelv for C2 20210330
 // fulldensity
 pub fn multiexp_fulldensity<Q, D, G, S>(
     pool: &Worker,
@@ -394,7 +397,7 @@ where
     Waiter::done(Err(SynthesisError::GPUError(gpu::GPUError::GPUDisabled)))
 }
 
-
+// Added by jackoelv for C2 20210330
 // skipdensity
 pub fn multiexp_skipdensity<G>(
     pool: &Worker,
@@ -418,7 +421,6 @@ where
     }
     Waiter::done(Err(SynthesisError::GPUError(gpu::GPUError::GPUDisabled)))
 }
-
 
 #[cfg(any(feature = "pairing", feature = "blst"))]
 #[test]
@@ -496,7 +498,7 @@ pub fn gpu_multiexp_consistency() {
     let _ = env_logger::try_init();
     gpu::dump_device_list();
 
-    const MAX_LOG_D: usize = 20;
+    const MAX_LOG_D: usize = 16;
     const START_LOG_D: usize = 10;
     let mut kern = Some(gpu::LockedMultiexpKernel::<Bls12>::new(MAX_LOG_D, false));
     let pool = Worker::new();
@@ -510,7 +512,7 @@ pub fn gpu_multiexp_consistency() {
         bases = [bases.clone(), bases.clone()].concat();
     }
 
-    for log_d in START_LOG_D..(MAX_LOG_D + 1) {
+    for log_d in START_LOG_D..=MAX_LOG_D {
         let g = Arc::new(bases.clone());
 
         let samples = 1 << log_d;
