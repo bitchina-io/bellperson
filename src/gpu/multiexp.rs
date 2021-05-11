@@ -245,14 +245,12 @@ where
     E: Engine,
 {
     pub fn create(priority: bool) -> GPUResult<MultiexpKernel<E>> {
-        let lock = locks::GPULock::lock();
-        let id = lock.id(); // Added by long 20210320
+        let lock = locks::GPULock::lock_all(); // Modified by long 20210512
 
         let devices = opencl::Device::all()?;
 
         let kernels: Vec<_> = devices
             .into_iter()
-            .filter(| d | d.bus_id() ==  id ) // Added by long 20210320
             .map(|d| (d.clone(), SingleMultiexpKernel::<E>::create(d, priority)))
             .filter_map(|(device, res)| {
                 if let Err(ref e) = res {
