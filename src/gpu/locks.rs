@@ -52,9 +52,9 @@ impl GPULock {
             .unwrap_or_else(|_| panic!("Cannot create GPU glock file at {:?}", &glock));
         loop {
             glock.lock_exclusive().unwrap();
-            let devs = opencl::Device::all().unwrap();
+            let devs = opencl::Device::all();
             for dev in devs {
-                let id = dev.bus_id();
+                let id = dev.bus_id().unwrap();
                 let lock = gpu_lock_path(GPU_LOCK_NAME, id);
                 let lock = File::create(&lock)
                     .unwrap_or_else(|_| panic!("Cannot create GPU lock file at {:?}", &lock));
@@ -72,11 +72,11 @@ impl GPULock {
             .unwrap_or_else(|_| panic!("Cannot create GPU glock file at {:?}", &glock));
         loop {
             glock.lock_exclusive().unwrap();
-            let devs = opencl::Device::all().unwrap();
+            let devs = opencl::Device::all();
             let mut lock_cnt = 0;
             let lock_num = devs.len();
             for dev in devs {
-                let id = dev.bus_id();
+                let id = dev.bus_id().unwrap();
                 let lock = gpu_lock_path(GPU_LOCK_NAME, id);
                 let lock = File::create(&lock)
                     .unwrap_or_else(|_| panic!("Cannot create GPU lock file at {:?}", &lock));
