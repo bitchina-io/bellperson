@@ -11,12 +11,12 @@ use std::time::Duration;
 const GPU_LOCK_NAME: &str = "bellman.gpu.lock";
 const PRIORITY_LOCK_NAME: &str = "bellman.priority.lock";
 
-// Modified by long 20210320
-// fn tmp_path(filename: &str) -> PathBuf {
-//     let mut p = std::env::temp_dir();
-//     p.push(filename);
-//     p
-// }
+fn tmp_path(filename: &str) -> PathBuf {
+    let mut p = std::env::temp_dir();
+    p.push(filename);
+    p
+}
+// Added by long 20210320
 fn gpu_lock_path(filename: &str, bus_id: u32) -> PathBuf {
     let mut name = String::from(filename);
     name.push('.');
@@ -47,10 +47,14 @@ impl GPULock {
         self.1
     }
     pub fn lock() -> GPULock {
-        loop{
-            let devs = opencl::Device::all().unwrap();
+        let glock = gpu_lock_path(GPU_LOCK_NAME, 0);
+        let glock = File::create(&glock)
+            .unwrap_or_else(|_| panic!("Cannot create GPU glock file at {:?}", &glock));
+        loop {
+            glock.lock_exclusive().unwrap();
+            let devs = opencl::Device::all();
             for dev in devs {
-                let id = dev.bus_id();
+                let id = dev.bus_id().unwrap();
                 let lock = gpu_lock_path(GPU_LOCK_NAME, id);
                 let lock = File::create(&lock)
                     .unwrap_or_else(|_| panic!("Cannot create GPU lock file at {:?}", &lock));
@@ -58,6 +62,33 @@ impl GPULock {
                     return GPULock(lock, id);
                 }
             }
+            glock.unlock().unwrap();
+            thread::sleep(Duration::from_secs(3));
+        }
+    }
+    pub fn lock_all() -> GPULock {
+        let glock = gpu_lock_path(GPU_LOCK_NAME, 0);
+        let glock = File::create(&glock)
+            .unwrap_or_else(|_| panic!("Cannot create GPU glock file at {:?}", &glock));
+        loop {
+            glock.lock_exclusive().unwrap();
+            let devs = opencl::Device::all();
+            let mut lock_cnt = 0;
+            let lock_num = devs.len();
+            for dev in devs {
+                let id = dev.bus_id().unwrap();
+                let lock = gpu_lock_path(GPU_LOCK_NAME, id);
+                let lock = File::create(&lock)
+                    .unwrap_or_else(|_| panic!("Cannot create GPU lock file at {:?}", &lock));
+                if lock.try_lock_exclusive().is_err() {
+                    break;
+                }
+                lock_cnt = lock_cnt + 1;
+            }
+            if lock_cnt == lock_num {
+                return GPULock(glock, 0);
+            }
+            glock.unlock().unwrap();
             thread::sleep(Duration::from_secs(3));
         }
     }
@@ -74,77 +105,35 @@ impl Drop for GPULock {
 /// signaling all other processes to release their `GPULock`s.
 /// Only one process can have the `PriorityLock` at a time.
 #[derive(Debug)]
-// Modified by long 20210320
-// pub struct PriorityLock(File);
-// impl PriorityLock {
-//     pub fn lock() -> PriorityLock {
-//         let priority_lock_file = tmp_path(PRIORITY_LOCK_NAME);
-//         debug!("Acquiring priority lock at {:?} ...", &priority_lock_file);
-//         let f = File::create(&priority_lock_file).unwrap_or_else(|_| {
-//             panic!(
-//                 "Cannot create priority lock file at {:?}",
-//                 &priority_lock_file
-//             )
-//         });
-//         f.lock_exclusive().unwrap();
-//         debug!("Priority lock acquired!");
-//         PriorityLock(f)
-//     }
-//     pub fn wait(priority: bool) {
-//         if !priority {
-//             File::create(tmp_path(PRIORITY_LOCK_NAME))
-//                 .unwrap()
-//                 .lock_exclusive()
-//                 .unwrap();
-//         }
-//     }
-//     pub fn should_break(priority: bool) -> bool {
-//         !priority
-//             && File::create(tmp_path(PRIORITY_LOCK_NAME))
-//                 .unwrap()
-//                 .try_lock_exclusive()
-//                 .is_err()
-//     }
-// }
-pub struct PriorityLock(File, u32);
+pub struct PriorityLock(File);
 impl PriorityLock {
     pub fn lock() -> PriorityLock {
-        loop{
-            let devs = opencl::Device::all().unwrap();
-            for dev in devs {
-                let id = dev.bus_id();
-                let f = gpu_lock_path(PRIORITY_LOCK_NAME, id);
-                let f = File::create(&f)
-                    .unwrap_or_else(|_| panic!("Cannot create Priority lock file at {:?}", &f));
-                if f.try_lock_exclusive().is_ok() {
-                    return PriorityLock(f, id);
-                }
-            }
-            thread::sleep(Duration::from_secs(3));
-        }
+        let priority_lock_file = tmp_path(PRIORITY_LOCK_NAME);
+        debug!("Acquiring priority lock at {:?} ...", &priority_lock_file);
+        let f = File::create(&priority_lock_file).unwrap_or_else(|_| {
+            panic!(
+                "Cannot create priority lock file at {:?}",
+                &priority_lock_file
+            )
+        });
+        f.lock_exclusive().unwrap();
+        debug!("Priority lock acquired!");
+        PriorityLock(f)
     }
     pub fn wait(priority: bool) {
         if !priority {
-            let _ = Self::lock();
+            File::create(tmp_path(PRIORITY_LOCK_NAME))
+                .unwrap()
+                .lock_exclusive()
+                .unwrap();
         }
     }
     pub fn should_break(priority: bool) -> bool {
         !priority
-            && {
-                let mut r = true;
-                let devs = opencl::Device::all().unwrap();
-                for dev in devs {
-                    let id = dev.bus_id();
-                    let f = gpu_lock_path(PRIORITY_LOCK_NAME, id);
-                    let f = File::create(&f)
-                        .unwrap_or_else(|_| panic!("Cannot create Priority lock file at {:?}", &f));
-                    if f.try_lock_exclusive().is_ok() {
-                        r = false;
-                        break;
-                    }
-                }
-                r
-            }
+            && File::create(tmp_path(PRIORITY_LOCK_NAME))
+                .unwrap()
+                .try_lock_exclusive()
+                .is_err()
     }
 }
 impl Drop for PriorityLock {

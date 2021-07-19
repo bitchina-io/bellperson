@@ -269,6 +269,45 @@ where
     create_proof_batch_priority::<E, C, P>(circuits, params, r_s, s_s, priority)
 }
 
+// Added by long 20210512 ---------------------------------
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
+use heim::{memory, units::information};
+use futures::executor::block_on;
+use lazy_static::*;
+
+lazy_static! {
+    static ref C2_PROOF_RC_NUM: Mutex<u32> = Mutex::new(0);
+    static ref C2_PROOF_RC_MAX: Mutex<u32> = Mutex::new(
+        block_on(async {
+            let memory = memory::memory().await.unwrap();
+            let total = memory.total().get::<information::gibibyte>();
+            (total / 230) as u32
+        })
+    );
+}
+
+fn c2_proof_lock() {
+    loop {
+        let mut pnum = C2_PROOF_RC_NUM.lock().unwrap();
+        let     pmax = C2_PROOF_RC_MAX.lock().unwrap();
+        if *pnum < *pmax {
+            *pnum = *pnum + 1;
+            break;
+        }
+        drop(pmax);
+        drop(pnum);
+        thread::sleep(Duration::from_secs(3));
+    }
+}
+
+fn c2_proof_unlock() {
+    let mut pnum = C2_PROOF_RC_NUM.lock().unwrap();
+    *pnum = *pnum - 1;
+}
+// --------------------------------------------------------
+
 pub fn create_proof_batch_priority<E, C, P: ParameterSource<E>>(
     circuits: Vec<C>,
     params: P,
@@ -280,6 +319,7 @@ where
     E: Engine,
     C: Circuit<E> + Send,
 {
+    c2_proof_lock();
     info!("Bellperson {} is being used!", BELLMAN_VERSION);
 
     // Preparing things for the proofs is done a lot in parallel with the help of Rayon. Make
@@ -690,6 +730,7 @@ where
     // info!("prover time: {:?}", proof_time);
     info!("ZQ: prover time: {:?}", start.elapsed());
 
+    c2_proof_unlock();
     Ok(proofs)
 }
 
