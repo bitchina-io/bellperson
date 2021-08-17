@@ -49,7 +49,7 @@ fs2 = { version = "0.4.3", optional = true }
 # Added by jackoelv for C2 20210330
 scoped_threadpool = "0.1.*"
 futures = "0.3"
-heim = { git = "https://github.com/heim-rs/heim", rev = "c111eb4", features = ["memory"] }
+heim = { git = "https://github.com/heim-rs/heim", rev = "e22e235", features = ["memory"] }
 
 [dev-dependencies]
 hex-literal = "0.3"
