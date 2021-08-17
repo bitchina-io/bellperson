@@ -662,9 +662,6 @@ where
     info!("ZQ: inputs end: {:?}", now.elapsed()); // Added by jackoelv for C2 20210330
     drop(multiexp_kern);
 
-    // Added by long 20210816
-    c2_proof_unlock();
-
     // Added by jackoelv for C2 20210330
     info!("ZQ: proofs start");
     let now = Instant::now();
@@ -735,6 +732,7 @@ where
     // Modified by jackoelv for C2 20210330
     // let proof_time = start.elapsed();
     // info!("prover time: {:?}", proof_time);
+    c2_proof_unlock();
     info!("ZQ: prover time: {:?}", start.elapsed());
 
     Ok(proofs)
